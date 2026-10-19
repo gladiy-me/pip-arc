@@ -1,6 +1,6 @@
 import { chromium } from 'playwright'
 import { writeFile } from 'fs/promises'
-import { readFileSync } from 'fs'
+
 import path from 'path'
 import { fileURLToPath } from 'url'
 
