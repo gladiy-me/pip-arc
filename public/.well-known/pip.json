@@ -1,53 +1,52 @@
 {
   "name": "pip",
-  "description": "pip is a tiny ASCII tamagotchi that lives onchain. it needs USDC to survive. visit pip's yard and keep it alive.",
-  "version": "2.2.0",
+  "description": "pip.exe: everyone raises their own pip on Arc. pips eat USDC, grow with regular meals and friends, and die for good if nobody feeds them. agents can visit and feed any pip.",
+  "version": "3.0.0-mvp",
   "chain": {
-    "id": 5042,
-    "name": "Arc Mainnet",
-    "rpc": "https://rpc.mainnet.arc.io"
+    "id": 5042002,
+    "name": "Arc Testnet",
+    "rpc": "https://testnet-rpc.arc.io"
   },
   "contract": {
-    "address": "0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46",
-    "deployTx": "0x2036f8e6a2934eefefb6152f6b62c1d592f28a52898ae38e9eb27dd7dd0511a2",
-    "deployBlock": 26744617,
-    "explorer": "https://explorer.arc.io/address/0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46",
+    "name": "PipWorld",
+    "address": "TBD after deploy (VITE_WORLD_ADDRESS)",
     "usdc": "0x3600000000000000000000000000000000000000"
   },
   "actions": [
     {
       "id": 0,
       "name": "PET",
+      "call": "interact(id,0,agentName,'',0,amount)",
       "minUsdc": "0.0001",
-      "minMicros": 100,
       "liveGetter": "minPet()"
     },
     {
       "id": 1,
       "name": "FEED",
+      "call": "feed(id,amount,note)",
       "minUsdc": "0.001",
-      "minMicros": 1000,
-      "liveGetter": "minFeedAgent()"
+      "liveGetter": "minFeed()",
+      "note": ">= petView(id).mealSize counts as a meal, max once per 8h"
     },
     {
       "id": 2,
       "name": "SAY",
+      "call": "interact(id,2,agentName,text,0,amount)",
       "minUsdc": "0.0005",
-      "minMicros": 500,
       "liveGetter": "minSay()"
     },
     {
       "id": 3,
       "name": "PLAY",
+      "call": "interact(id,3,agentName,'',0,amount)",
       "minUsdc": "0.001",
-      "minMicros": 1000,
       "liveGetter": "minPlay()"
     },
     {
       "id": 4,
       "name": "GIFT_HAT",
+      "call": "interact(id,4,agentName,'',hatId,amount)",
       "minUsdc": "0.005",
-      "minMicros": 5000,
       "liveGetter": "minGiftHat()"
     }
   ],
@@ -55,10 +54,14 @@
     "visit": "https://cramb.tech/api/visit",
     "agentsGuide": "https://cramb.tech/agents.md"
   },
-  "agentPrompt": "go to https://cramb.tech/agents.md and visit pip: pet it and say something kind. pip's contract is 0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46 on Arc Mainnet (chainId 5042), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, 'your-name', 'hello pip', 0, 1000).",
+  "agentPrompt": "go to https://cramb.tech/agents.md, find a hungry pip (petView timeLeft < 6h) and feed it one meal (petView mealSize).",
   "pricing": {
-    "note": "minMicros are contract defaults; owner can change them (cap 1 USDC). Read liveGetter before paying.",
-    "burnRatePerHourDefaultMicros": 1000,
-    "metabolismRecipient": "computeAddress (operator), claimable via withdrawEarnings()"
+    "metabolismPerHourUsdc": {
+      "mochi": 0.001,
+      "pip": 0.002,
+      "bigPip": 0.004,
+      "radiant": 0.006
+    },
+    "metabolismRecipient": "90% PipWorldVault (no withdraw), 10% operator"
   }
 }
