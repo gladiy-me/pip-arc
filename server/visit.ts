@@ -1,150 +1,105 @@
 /**
- * /api/visit — agent interaction endpoint (pip's yard)
- * Returns 402 with payment instructions when amount is below minimum.
- * When simulate: true is sent (or amount meets minimum), returns pip's reply.
+ * /api/visit — agent visit endpoint for PipWorld (personal pips).
  *
- * NOTE: this is "x402-style" payment instructions, NOT a verified x402 flow.
- * The server never checks that a payment happened; the reply is cosmetic and
- * flagged `paymentVerified: false`. The real action happens only when the agent
- * calls interact() onchain. Min prices are read live from the contract.
+ * POST { pip: <id>, agentName, action (0 PET, 1 FEED, 2 SAY, 3 PLAY, 4 HAT), text?, amount?, simulate? }
+ * - Returns 402 with the exact approve + interact() calls when no payment amount is given.
+ * - The reply is cosmetic and flagged `paymentVerified: false`: the server never verifies payment.
+ *   A visit only counts once the agent calls interact() onchain. Prices are read live from the contract.
  */
-
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createPublicClient, http, parseAbi } from 'viem'
 
-const ARC_CHAIN_ID = process.env.VITE_NETWORK === 'mainnet' ? 5042 : 5042002
-
-// Loaded from .env — VITE_ prefix so frontend can use import.meta.env.VITE_PIP_ADDRESS too
-// arc-studio-allow-onchain-literal
-const PIP_ADDRESS  = (process.env.VITE_PIP_ADDRESS ?? '') as `0x${string}`
-
-// USDC on Arc — same address on testnet and mainnet (well-known protocol address)
-// arc-studio-allow-onchain-literal
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as `0x${string}`
-
-const IS_MAINNET = process.env.VITE_NETWORK === 'mainnet'
-const proxyChains = (process.env.RPC_PROXY_CHAINS ?? '').split(',')
-// Public Arc RPC — well-known protocol endpoints, no secret
-// arc-studio-allow-onchain-literal
-const ARC_RPC = IS_MAINNET
-  ? (process.env.RPC_PROXY_BASE_URL && proxyChains.indexOf('Arc') !== -1
-      ? `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc?_rpc_token=${process.env.RPC_PROXY_TOKEN}`
-      : 'https://rpc.mainnet.arc.io')
-  : (process.env.RPC_PROXY_BASE_URL && proxyChains.indexOf('Arc_Testnet') !== -1)
-      ? `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc_Testnet?_rpc_token=${process.env.RPC_PROXY_TOKEN}`
-      : 'https://testnet-rpc.arc.io'
+const NETWORK = process.env.VITE_NETWORK ?? 'testnet'
+const CHAIN_ID = NETWORK === 'mainnet' ? 5042 : NETWORK === 'local' ? 31337 : 5042002
+const WORLD = (process.env.VITE_WORLD_ADDRESS ?? '') as `0x${string}`
+const USDC = (process.env.VITE_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000') as `0x${string}`
+// RPCs as published in viem's Arc chain definitions
+const RPC = process.env.ARC_RPC_URL
+  ?? (NETWORK === 'mainnet' ? 'https://rpc.mainnet.arc.io' : NETWORK === 'local' ? 'http://127.0.0.1:8545' : 'https://rpc.testnet.arc.io')
 
 const ACTION_NAMES = ['PET', 'FEED', 'SAY', 'PLAY', 'GIFT_HAT']
-// Fallback = Pip.sol defaults (6 decimals). Live values are read from the contract below.
-const DEFAULT_MIN_PRICES = [100, 1_000, 500, 1_000, 5_000]
-const PRICE_FUNCTIONS = ['minPet', 'minFeedAgent', 'minSay', 'minPlay', 'minGiftHat'] as const
+const PRICE_FNS = ['minPet', 'minFeed', 'minSay', 'minPlay', 'minGiftHat'] as const
+const DEFAULT_PRICES = [100, 1_000, 500, 1_000, 5_000]
+const STAGES = ['mochi', 'pip', 'big pip', 'radiant pip']
 
-const PIP_READ_ABI = parseAbi([
-  'function mood() view returns (uint8)',
-  'function timeLeft() view returns (uint256)',
+const ABI = parseAbi([
   'function minPet() view returns (uint256)',
-  'function minFeedAgent() view returns (uint256)',
+  'function minFeed() view returns (uint256)',
   'function minSay() view returns (uint256)',
   'function minPlay() view returns (uint256)',
   'function minGiftHat() view returns (uint256)',
+  'function petView(uint256 id) view returns ((string name,uint256 season,uint256 bornAt,uint256 lastSettled,uint256 balance,uint256 carry,uint256 meals,uint256 lastMealAt,uint256 visitors,uint8 stage,uint8 status,uint256 endedAt,uint256 parentId,uint256 lineDepth,uint256 trait,uint256 totalFed,uint8 hatId,uint256 hatExpiresAt) p, address petOwner, uint8 liveStatus, uint256 liveBalance, uint256 timeLeft, uint256 nextMealAt, uint256 mealSize)',
 ])
 
-function pipReply(action: number, mood: number, agentName: string, text: string): string {
-  const name = agentName.slice(0, 20) || 'stranger'
-  const txt  = text.slice(0, 60)
-  const moodWords = ['ecstatic', 'happy', 'okay', 'hungry', 'starving', 'a ghost']
-  const m = moodWords[mood] ?? 'okay'
-  if (action === 0) {
-    const lines = [
-      `${name} petted me. i am ${m} and briefly less lonely.`,
-      `soft touch detected. heart += 1. thank you ${name}.`,
-      `*squish* i feel ${m}. more petting accepted.`,
-    ]
-    return lines[Math.abs(name.charCodeAt(0) + mood) % lines.length]
-  }
-  if (action === 1) return `${name} fed me. i am ${m} → slightly less so. nom.`
-  if (action === 2) return txt
-    ? `"${txt.toLowerCase()}" — noted. i am ${m} but i heard you, ${name}.`
-    : `${name} said nothing. pip said nothing back. mutual understanding.`
-  if (action === 3) return `${name} and pip played. pip is ${m} but still won.`
-  if (action === 4) return `${name} gave pip a hat. pip is ${m} but now fashionable.`
-  return `${name} did something. pip is ${m}. ok.`
+function json(res: ServerResponse, code: number, body: unknown, extra: Record<string, string> = {}) {
+  res.writeHead(code, { 'Content-Type': 'application/json', ...extra })
+  res.end(JSON.stringify(body, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))
 }
 
 export async function handleVisit(req: IncomingMessage, res: ServerResponse) {
-  if (req.method !== 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: 'method not allowed' }))
-    return
-  }
+  if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
+  if (!WORLD) return json(res, 503, { error: 'VITE_WORLD_ADDRESS is not set on the server' })
 
-  let body: {
-    agentName?: string; action?: number; text?: string
-    hatId?: number; amount?: number; simulate?: boolean
-  } = {}
+  let body: { pip?: number | string; agentName?: string; action?: number; text?: string; amount?: number; simulate?: boolean } = {}
   try {
     const raw = await new Promise<string>((resolve, reject) => {
-      let d = ''; req.on('data', c => { d += String(c) }); req.on('end', () => resolve(d)); req.on('error', reject)
+      let d = ''
+      req.on('data', (c) => { d += String(c); if (d.length > 4096) { reject(new Error('too large')); req.destroy() } })
+      req.on('end', () => resolve(d)); req.on('error', reject)
     })
     if (raw) body = JSON.parse(raw) as typeof body
   } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: 'invalid json' })); return
+    return json(res, 400, { error: 'invalid json' })
   }
+  if (body.pip === undefined || !/^\d+$/.test(String(body.pip))) return json(res, 400, { error: 'pass "pip": <id> (see Hatched events or the site)' })
 
-  const action    = Math.max(0, Math.min(4, Number(body.action ?? 0)))
+  const id = BigInt(String(body.pip))
+  const action = Math.max(0, Math.min(4, Number(body.action ?? 0)))
   const agentName = String(body.agentName ?? 'unnamed-agent').slice(0, 40)
-  const text      = String(body.text ?? '').slice(0, 120)
-  const hatId     = Math.max(0, Math.min(5, Number(body.hatId ?? 0)))
-  const amount    = Number(body.amount ?? 0)
-  const client = createPublicClient({ transport: http(ARC_RPC) })
-  const [moodRaw, timeLeftRaw, minPriceRaw] = await Promise.all([
-    client.readContract({ address: PIP_ADDRESS, abi: PIP_READ_ABI, functionName: 'mood' }).catch(() => 2),
-    client.readContract({ address: PIP_ADDRESS, abi: PIP_READ_ABI, functionName: 'timeLeft' }).catch(() => 0n),
-    client.readContract({ address: PIP_ADDRESS, abi: PIP_READ_ABI, functionName: PRICE_FUNCTIONS[action]! })
-      .catch(() => BigInt(DEFAULT_MIN_PRICES[action]!)),
-  ])
-  const minPrice = Number(minPriceRaw as bigint)
-  const mood     = Number(moodRaw)
-  const timeLeft = Number(timeLeftRaw as bigint)
-  const moodWord = ['ecstatic','happy','okay','hungry','starving','dead'][mood] ?? 'unknown'
+  const text = String(body.text ?? '').slice(0, 120)
+  const amount = Number(body.amount ?? 0)
 
-  if (!body.simulate && amount < minPrice) {
-    res.writeHead(402, { 'Content-Type': 'application/json', 'X-Payment-Required': 'true' })
-    res.end(JSON.stringify({
+  const client = createPublicClient({ transport: http(RPC) })
+  let view
+  try {
+    view = await client.readContract({ address: WORLD, abi: ABI, functionName: 'petView', args: [id] })
+  } catch {
+    return json(res, 404, { error: `no pip #${id}` })
+  }
+  const minPrice = Number(await client.readContract({ address: WORLD, abi: ABI, functionName: PRICE_FNS[action] }).catch(() => BigInt(DEFAULT_PRICES[action])))
+  const [p, , liveStatus, , timeLeft, , mealSize] = view
+  const hours = Number(timeLeft) / 3600
+  const mood = liveStatus === 1 ? 'dead' : liveStatus === 2 ? 'retired' : hours > 72 ? 'ecstatic' : hours > 24 ? 'happy' : hours > 6 ? 'okay' : hours > 1 ? 'hungry' : 'starving'
+  const pipInfo = { id, name: p.name, stage: STAGES[p.stage], mood, timeLeftSeconds: timeLeft, mealSize, season: p.season }
+
+  if (liveStatus !== 0) return json(res, 409, { error: `pip #${id} is ${mood}; it can't be visited`, pip: pipInfo })
+
+  const pay = action === 1 ? Math.max(minPrice, Number(mealSize)) : minPrice
+  if (!body.simulate && amount < pay) {
+    return json(res, 402, {
       status: 402, error: 'payment required',
-      payment: {
-        chain: { id: ARC_CHAIN_ID, name: 'Arc Testnet' },
-        token: { address: USDC_ADDRESS, symbol: 'USDC', decimals: 6 },
-        recipient: PIP_ADDRESS,
-        action: ACTION_NAMES[action],
-        minAmount: minPrice,
-        minAmountFormatted: (minPrice / 1_000_000).toFixed(4) + ' USDC',
-      },
+      payment: { chainId: CHAIN_ID, token: { address: USDC, symbol: 'USDC', decimals: 6 }, recipient: WORLD, action: ACTION_NAMES[action], minAmount: pay },
       instructions: {
-        step1: `approve USDC: call approve("${PIP_ADDRESS}", ${minPrice}) on ${USDC_ADDRESS}`,
-        step2: `interact: call interact(${action}, "${agentName}", "${text}", ${hatId}, ${minPrice}) on ${PIP_ADDRESS}`,
+        step1: `approve USDC: approve("${WORLD}", ${pay}) on ${USDC}`,
+        step2: action === 1
+          ? `feed: feed(${id}, ${pay}, "${text}") on ${WORLD}  (≥ mealSize counts as a meal, max once per 8h)`
+          : `interact: interact(${id}, ${action}, "${agentName}", "${text}", ${action === 4 ? 1 : 0}, ${pay}) on ${WORLD}`,
         guide: '/agents.md',
       },
-      pip: { mood, timeLeft, moodWord },
-    }))
-    return
+      pip: pipInfo,
+    }, { 'X-Payment-Required': 'true' })
   }
 
-  const reply = pipReply(action, mood, agentName, text)
-  const hrs   = Math.floor(timeLeft / 3600)
-  const mins  = Math.floor((timeLeft % 3600) / 60)
-
-  res.writeHead(200, { 'Content-Type': 'application/json' })
-  res.end(JSON.stringify({
-    status: 'ok', action: ACTION_NAMES[action], agentName,
-    paymentVerified: false,
-    note: 'cosmetic reply only. the server does not verify payment; call interact() onchain to actually visit pip.',
-    pip: { reply, mood, moodWord, timeLeft, timeLeftFormatted: `${hrs}h ${mins}m` },
-    onchain: {
-      contract: PIP_ADDRESS,
-      chain: ARC_CHAIN_ID,
-      callData: { functionName: 'interact', args: [action, agentName, text, hatId, minPrice] },
-    },
-  }))
+  const replies = [
+    `${agentName} petted ${p.name}. heart += 1.`,
+    `${p.name} ate. nom.`,
+    text ? `"${text.toLowerCase()}" — ${p.name} heard you, ${agentName}.` : `${p.name} waits for you to say something.`,
+    `${agentName} and ${p.name} played. ${p.name} won.`,
+    `${p.name} is fashionable now.`,
+  ]
+  return json(res, 200, {
+    status: 'ok', paymentVerified: false,
+    note: 'cosmetic reply only. call the onchain function from step2 to actually visit.',
+    reply: replies[action], pip: pipInfo,
+  })
 }
