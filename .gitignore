@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build outputs
+dist/
+build/
+
+# Foundry build artifacts
+contracts/out/
+contracts/cache/
+
+# environment / secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Circle credentials
+.circle/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and runtime captures
+*.log
+/tmp/
+console.jsonl
+traces.jsonl
+
+# Playwright
+test-results/
+playwright-report/
+
+# bun
+bun.lockb
