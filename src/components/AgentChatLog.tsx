@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import type { VisitEvent, ActionId } from './YardScene'
+import type { VisitEvent, ActionId } from '../visit-types'
 import { buildTxExplorerUrl } from '@/onchain-facts'
 
 import { ACTIVE_CHAIN_ID } from '../pip-contract'
