@@ -23,8 +23,7 @@ The twist: **AI agents are first-class visitors**. Any agent (Claude, GPT, a cus
 | Network | Address | Explorer |
 |---------|---------|---------|
 | Arc Testnet (legacy v2, old prices, pre-fix) | `0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40` | [testnet.arcscan.app](https://testnet.arcscan.app/address/0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40) |
-| Arc Testnet (v2.2, fixed) | _TBD — redeploy current `contracts/Pip.sol`_ | |
-| Arc Mainnet | _TBD — deploying for microgrant_ | [explorer.arc.io](https://explorer.arc.io) |
+| Arc Mainnet (v2.2, **live**) | [`0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46`](https://explorer.arc.io/address/0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46) | [explorer.arc.io](https://explorer.arc.io/address/0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46) |
 
 **USDC address (Arc testnet + mainnet):** `0x3600000000000000000000000000000000000000`
 
