@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pip.exe owner panel</title>
+<style>body{background:#0f1a14;color:#cfe8d6;font:15px/1.5 ui-monospace,Menlo,monospace;max-width:640px;margin:40px auto;padding:0 16px}button{background:#7ee2a0;color:#0f1a14;border:0;padding:12px 18px;font:inherit;font-weight:700;border-radius:8px;cursor:pointer;margin:6px 0}button:disabled{opacity:.4}code{color:#ffe08a}#log{white-space:pre-wrap;background:#08110c;padding:12px;border-radius:8px;margin-top:16px;min-height:60px}</style></head><body>
+<h2>pip.exe owner panel &middot; Arc mainnet</h2>
+<p>contract <code>0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46</code><br>sign with owner <code>0x6f93...1A6B</code></p>
+<button id="c">1. connect wallet</button><br>
+<button id="b" disabled>2. setBurnRate(4167) &rarr; 0.05 USDC per 12h</button><br>
+<button id="p" disabled>3. setPrices: min feed 0.05 USDC (agent prices unchanged)</button>
+<div id="log"></div>
+<script>
+const PIP="0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46",OWNER="0x6f93e4a35e5bd9491a414a3fb10dc50005ca1a6b",CH="0x13b2";
+const CD={b:"0x189d165e0000000000000000000000000000000000000000000000000000000000001047",p:"0x0130dabf000000000000000000000000000000000000000000000000000000000000c350000000000000000000000000000000000000000000000000000000000000006400000000000000000000000000000000000000000000000000000000000003e800000000000000000000000000000000000000000000000000000000000001f400000000000000000000000000000000000000000000000000000000000003e80000000000000000000000000000000000000000000000000000000000001388"};const E=window.ethereum,L=m=>{log.textContent+=m+"\n"};let acct;
+async function rd(sel){const r=await E.request({method:"eth_call",params:[{to:PIP,data:sel},"latest"]});return Number(BigInt(r))}
+async function show(){L("burnRatePerHour = "+await rd("0xc235383b")+", minFeed = "+await rd("0xb9a1a0d0"))}
+c.onclick=async()=>{try{if(!E)return L("no wallet found");[acct]=await E.request({method:"eth_requestAccounts"});L("wallet: "+acct);
+try{await E.request({method:"wallet_switchEthereumChain",params:[{chainId:CH}]})}catch(e){await E.request({method:"wallet_addEthereumChain",params:[{chainId:CH,chainName:"Arc",nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},rpcUrls:["https://rpc.mainnet.arc.io"],blockExplorerUrls:["https://explorer.arc.io"]}]})}
+if(acct.toLowerCase()!==OWNER)return L("switch to the owner wallet 0x6f93...1A6B");await show();b.disabled=false;p.disabled=false}catch(e){L("error: "+(e.message||e))}};
+async function send(btn,data){btn.disabled=true;try{const tx=await E.request({method:"eth_sendTransaction",params:[{from:acct,to:PIP,data}]});L("tx: "+tx);let r;while(!(r=await E.request({method:"eth_getTransactionReceipt",params:[tx]})))await new Promise(s=>setTimeout(s,1500));L(r.status==="0x1"?"ok":"FAILED");await show()}catch(e){L("error: "+(e.message||e));btn.disabled=false}}
+b.onclick=()=>send(b,CD.b);p.onclick=()=>send(p,CD.p);
+</script></body></html>
