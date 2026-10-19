@@ -1,346 +1,296 @@
 /**
- * pip's yard — onchain AI tamagotchi + agent visitor park on Arc Testnet
- * Humans can feed; AI agents visit and pay tiny USDC for every action.
+ * pip.exe — onchain tamagotchi on Arc. "digit yard" layout (docs/PIP_VISUAL_SPEC.md, Phase 1):
+ * yard left (every cell is a digit), dApp panel right; stacked on phones.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAccount, useReadContracts } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { PIP_ADDRESS, PIP_ABI, ACTIVE_CHAIN_ID, DEFAULT_BURN_RATE } from './pip-contract'
-import { PipArt, type Mood } from './components/PipArt'
-import { PipThoughts } from './components/PipThoughts'
-import { StatsPanel } from './components/StatsPanel'
-import { FeedPanel } from './components/FeedPanel'
+import { PIP_ADDRESS, PIP_ABI, ACTIVE_CHAIN_ID, NETWORK_LABEL } from './pip-contract'
+import { DigitYard, type DigitYardHandle } from './components/DigitYard'
+import { usePipView, type PipView } from './hooks/usePipView'
+import { VisitPanel, fmtMicros } from './components/VisitPanel'
 import { TopFeeders } from './components/TopFeeders'
-import { GraveyardView } from './components/GraveyardView'
-import { ShareCard } from './components/ShareCard'
-import { YardScene } from './components/YardScene'
-import { AgentChatLog } from './components/AgentChatLog'
+import { GraveyardView, type Grave } from './components/GraveyardView'
 import { AgentBestFriends } from './components/AgentBestFriends'
 import { AgentEntrance } from './components/AgentEntrance'
 import { InteractedLog } from './components/InteractedLog'
-import type { VisitEvent } from './components/YardScene'
+import { shortAddr, type PipTxRequest } from './hooks/usePipTx'
+import { MOODS, STAGES, fmtDur } from './digit-yard'
+import { ACTION_NAMES, type VisitEvent } from './visit-types'
 
-const PIP = { address: PIP_ADDRESS, abi: PIP_ABI } as const
+const PIP = { address: PIP_ADDRESS, abi: PIP_ABI, chainId: ACTIVE_CHAIN_ID } as const
 
-type Tab = 'yard' | 'feed' | 'graveyard'
-
-
-interface Grave {
-  gen: bigint
-  born: bigint
-  died: bigint
-  totalFed: bigint
-  feeders: bigint
-  lastFeeder: string
-  epitaph: string
+interface ActivityRow {
+  id: string
+  who: string
+  you: boolean
+  kind: string
+  amount?: bigint
+  text?: string
+  /** ms; 0 = backfilled history */
+  ts: number
 }
 
-function usePoker() {
-  const { writeContract: poke, data: pokeHash } = useWriteContract()
-  const { isSuccess } = useWaitForTransactionReceipt({ hash: pokeHash })
-  return { poke: () => poke({ address: PIP_ADDRESS, abi: PIP_ABI, functionName: 'poke', chainId: ACTIVE_CHAIN_ID }), isSuccess }
+function DigitBar({ filled, total, label }: { filled: number; total: number; label: string }) {
+  const f = Math.max(0, Math.min(total, filled))
+  return (
+    <div className="lifebar" role="img" aria-label={label}>
+      <span className="f">{'8'.repeat(f)}</span><span className="e">{'0'.repeat(total - f)}</span>
+    </div>
+  )
 }
+
+/** Local 1 s countdown from the last timeLeft read. */
+function useCountdown(v: PipView): number {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  if (!v.alive) return 0
+  return Math.max(0, Number(v.timeLeftSeconds) - Math.floor((now - v.readAt) / 1000))
+}
+
+function ago(ts: number): string {
+  if (!ts) return '—'
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`
+}
+
+function StatusCard({ v, secLeft }: { v: PipView; secLeft: number }) {
+  const N = 24
+  const filled = v.alive ? Math.max(1, Math.min(N, Math.ceil((secLeft / 3600 / 96) * N))) : 0
+  return (
+    <div className="card">
+      <h2>status <span>{v.alive ? 'alive' : 'dead · feed to hatch'}</span></h2>
+      <div className="mood">
+        <span className="word">{MOODS[v.mood]}</span>
+        <span className="gen">generation #{v.generation.toString()}</span>
+      </div>
+      <DigitBar filled={filled} total={N} label={`life left: ${v.alive ? fmtDur(secLeft) : 'none'}`} />
+      <dl className="stats">
+        <div><dt>time left</dt><dd className="big">{v.alive ? fmtDur(secLeft) : 'dead'}</dd></div>
+        <div><dt>balance</dt><dd>{(Number(v.balance) / 1e6).toFixed(6)} usdc</dd></div>
+        <div><dt>metabolism</dt><dd>{fmtMicros(v.burnRatePerHour)} usdc/h</dd></div>
+        <div><dt>feeders · agents</dt><dd>{v.feederCount.toString()} · {v.visitorCount.toString()}</dd></div>
+      </dl>
+    </div>
+  )
+}
+
+function GrowthCard({ v }: { v: PipView }) {
+  const n = v.nextStage
+  const M = 24
+  let fill = M
+  if (n) {
+    const span = Number(n.need - n.from)
+    const pr = span > 0 ? Math.max(0, Math.min(1, Number(n.fed - n.from) / span)) : 1
+    fill = Math.round(pr * M)
+  }
+  return (
+    <div className="card">
+      <h2>growth <span>{v.stageName}</span></h2>
+      <div className="stages">
+        {STAGES.map((s, i) => (
+          <span key={s.name} className={v.alive && i === v.stage ? 'on' : v.alive && i < v.stage ? 'done' : ''}>{s.name}</span>
+        ))}
+      </div>
+      {n ? (
+        <>
+          <DigitBar filled={fill} total={M} label={`progress to ${n.name}`} />
+          <p className="fine">
+            next: {n.name} · fed {fmtMicros(n.fed)} / {fmtMicros(n.need)} usdc this generation
+            {n.needVisitors > 0n ? ` · ${(n.visitors < n.needVisitors ? n.visitors : n.needVisitors).toString()} / ${n.needVisitors.toString()} different agents` : ''}
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="lifebar">max form</div>
+          <p className="fine">final form. dies like everyone else if nobody feeds it.</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ActivityCard({ rows }: { rows: ActivityRow[] }) {
+  const [, tick] = useState(0)
+  useEffect(() => { const t = setInterval(() => tick(x => x + 1), 5000); return () => clearInterval(t) }, [])
+  return (
+    <div className="card">
+      <h2>activity <span>Interacted · Fed</span></h2>
+      {rows.length === 0 ? <p className="fine">no visitors yet. be the first.</p> : (
+        <ul className="log">
+          {rows.slice(0, 30).map(e => (
+            <li key={e.id}>
+              <span className={`who${e.you ? ' you' : ''}`} title={e.who}>{e.who}</span>
+              <span className="what">
+                <b>{e.kind}</b>
+                {e.kind === 'EVOLVE' ? ` → ${e.text}` : ` ${fmtMicros(e.amount ?? 0n)} usdc${e.text ? ` · "${e.text}"` : ''}`}
+              </span>
+              <span className="ago">{ago(e.ts)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+type LedgerTab = 'feeders' | 'agents' | 'graveyard'
 
 export default function App() {
-  const [tab, setTab]           = useState<Tab>('yard')
-  const [eating, setEating]     = useState(false)
-  const [recentFed, setRecentFed] = useState(false)
-  const [lastFedAmount, setLastFedAmount] = useState('')
+  const yardRef = useRef<DigitYardHandle>(null)
+  const { address } = useAccount()
+  const me = address?.toLowerCase()
+  const meRef = useRef(me)
+  meRef.current = me
 
-  // Visit event queue (for yard + chat log) — populated from live onchain Interacted events
-  const [visits, setVisits]     = useState<VisitEvent[]>([])
-  const addVisit = useCallback((v: VisitEvent) => {
-    setVisits(prev => [...prev.slice(-99), v])
-  }, [])
+  const [activity, setActivity] = useState<ActivityRow[]>([])
+  const pushRow = useCallback((r: ActivityRow) => setActivity(prev => [r, ...prev].slice(0, 60)), [])
 
-  // Feed log state (human feeds, for the feed tab)
-  interface FeedEntry { feeder: string; amount: bigint; note: string; txHash?: string }
-  const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([])
-  const addFed = useCallback((feeder: string, amount: bigint, note: string, txHash?: string) => {
-    setFeedEntries(prev => [...prev.slice(-49), { feeder, amount, note, txHash }])
-  }, [])
+  const view = usePipView(yardRef, {
+    onEvolve: name => pushRow({ id: `evo-${Date.now()}`, who: 'pip', you: true, kind: 'EVOLVE', text: name, ts: Date.now() }),
+  })
+  const secLeft = useCountdown(view)
+  const burnRef = useRef(view.burnRatePerHour)
+  burnRef.current = view.burnRatePerHour
+  const refetchRef = useRef(view.refetch)
+  refetchRef.current = view.refetch
 
-  // Core pip state reads
-  const { data, refetch, isLoading } = useReadContracts({
+  // secondary reads (leaderboards + graves)
+  const { data } = useReadContracts({
     contracts: [
-      { ...PIP, functionName: 'generation' },
-      { ...PIP, functionName: 'birthTime' },
-      { ...PIP, functionName: 'lastSettled' },
-      { ...PIP, functionName: 'balance' },
-      { ...PIP, functionName: 'burnRatePerHour' },
-      { ...PIP, functionName: 'totalFedThisGen' },
-      { ...PIP, functionName: 'feederCount' },
-      { ...PIP, functionName: 'alive' },
-      { ...PIP, functionName: 'isAlive' },
-      { ...PIP, functionName: 'timeLeft' },
-      { ...PIP, functionName: 'mood' },
       { ...PIP, functionName: 'topFeeders' },
-      { ...PIP, functionName: 'gravesCount' },
-      { ...PIP, functionName: 'lastFeeder' },
       { ...PIP, functionName: 'topVisitors' },
-      { ...PIP, functionName: 'currentHat' },
+      { ...PIP, functionName: 'gravesCount' },
     ],
     query: { refetchInterval: 10_000 },
   })
-
-  const generation     = (data?.[0]?.result as bigint | undefined) ?? 1n
-  const birthTime      = (data?.[1]?.result as bigint | undefined) ?? 0n
-  const balance        = (data?.[3]?.result as bigint | undefined) ?? 0n
-  const burnRatePerHour = (data?.[4]?.result as bigint | undefined) ?? DEFAULT_BURN_RATE
-  const isAlive        = (data?.[8]?.result as boolean | undefined) ?? true
-  const timeLeftSeconds = (data?.[9]?.result as bigint | undefined) ?? 0n
-  const moodRaw        = (data?.[10]?.result as number | undefined) ?? 0
-  const mood           = Math.min(5, Math.max(0, moodRaw)) as Mood
-  const topFeedersRaw  = data?.[11]?.result as readonly [`0x${string}`[], bigint[]] | undefined
-  const gravesCount    = (data?.[12]?.result as bigint | undefined) ?? 0n
-  const lastFeeder     = (data?.[13]?.result as string | undefined) ?? ''
-  const topVisitorsRaw = data?.[14]?.result as readonly [`0x${string}`[], string[], bigint[]] | undefined
-  const currentHatRaw  = data?.[15]?.result as readonly [number, bigint, boolean] | undefined
-
-  const feeders        = topFeedersRaw?.[0] ?? []
-  const amounts        = topFeedersRaw?.[1] ?? []
-  const visitorAddrs   = topVisitorsRaw?.[0] ?? []
-  const visitorNames   = topVisitorsRaw?.[1] ?? []
-  const visitorAmounts = topVisitorsRaw?.[2] ?? []
-  const hatId          = Number(currentHatRaw?.[0] ?? 0)
-  const hatActive      = Boolean(currentHatRaw?.[2] ?? false)
-
-  // Load graves
-  const graveIndices = Array.from({ length: Math.min(Number(gravesCount), 20) }, (_, i) => i)
+  const topFeedersRaw  = data?.[0]?.result as readonly [`0x${string}`[], bigint[]] | undefined
+  const topVisitorsRaw = data?.[1]?.result as readonly [`0x${string}`[], string[], bigint[]] | undefined
+  const gravesCount    = (data?.[2]?.result as bigint | undefined) ?? 0n
+  const graveIndices = Array.from({ length: Math.min(Number(gravesCount), 20) }, (_, i) => Number(gravesCount) - 1 - i).reverse()
   const { data: graveData } = useReadContracts({
     contracts: graveIndices.map(i => ({ ...PIP, functionName: 'getGrave', args: [BigInt(i)] })),
     query: { enabled: gravesCount > 0n, refetchInterval: 30_000 },
   })
-  const graves: Grave[] = (graveData ?? [])
-    .map(r => r.result as Grave | undefined)
-    .filter((g): g is Grave => !!g)
+  const graves: Grave[] = (graveData ?? []).map(r => r.result as Grave | undefined).filter((g): g is Grave => !!g)
+  const [tab, setTab] = useState<LedgerTab>('feeders')
 
-  const refresh = useCallback(() => { void refetch() }, [refetch])
-  useEffect(() => {
-    const t = setInterval(refresh, 10_000)
-    return () => clearInterval(t)
-  }, [refresh])
+  // ── events → animations ──────────────────────────────────────────────
+  const ownHashes = useRef(new Set<string>())
+  const refetchSoon = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleRefetch = useCallback(() => {
+    if (refetchSoon.current) clearTimeout(refetchSoon.current)
+    refetchSoon.current = setTimeout(() => refetchRef.current(), 1500)
+  }, [])
+  const lifeOf = (amount: bigint) => {
+    const r = burnRef.current
+    return r > 0n ? Number((amount * 3600n) / r) : 0
+  }
 
-  const { poke } = usePoker()
-  const pokedRef = useRef(false)
-  useEffect(() => {
-    if (isAlive && balance > 0n && !pokedRef.current) {
-      pokedRef.current = true
-      poke()
-    }
+  /** Same animation for the user's own confirmed tx and for a live event from their wallet. */
+  const animateDirect = useCallback((action: number, amount: bigint, text: string) => {
+    const y = yardRef.current
+    if (!y) return
+    if (action === 0) y.pet()
+    else if (action === 1) y.feed(lifeOf(amount), { amountUsdc: Number(amount) / 1e6 })
+    else if (action === 2) y.heard(text || 'hello pip')
+    else if (action === 3) y.play()
+    else if (action === 4) y.hat(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function handleFed(amount: string) {
-    setEating(true)
-    setRecentFed(true)
-    setLastFedAmount(amount)
-    setTimeout(() => setEating(false), 2500)
-    setTimeout(() => setRecentFed(false), 8000)
-    setTimeout(() => refresh(), 3000)
-  }
+  const onVisit = useCallback((v: VisitEvent) => {
+    const wallet = v.wallet?.toLowerCase()
+    const mine = !!wallet && wallet === meRef.current
+    pushRow({
+      id: v.id,
+      who: v.isHuman ? (mine ? 'you' : shortAddr(v.agentName)) : (mine ? 'you' : v.agentName.slice(0, 24) || '?'),
+      you: mine,
+      kind: v.isHuman ? 'FEED' : ACTION_NAMES[v.action],
+      amount: v.amount,
+      text: v.text ? v.text.slice(0, 60) : '',
+      ts: v.ts,
+    })
+    if (!v.ts) return                                   // history never animates
+    scheduleRefetch()
+    if (v.txHash && ownHashes.current.has(v.txHash)) return  // already animated on confirmation
+    const y = yardRef.current
+    if (!y) return
+    if (v.isHuman) {                                    // human feed(): just the coin, no robot
+      y.feed(lifeOf(v.amount), { amountUsdc: Number(v.amount) / 1e6, who: mine ? undefined : shortAddr(v.agentName) })
+    } else if (mine) {
+      animateDirect(v.action, v.amount, v.text)
+    } else {
+      y.agentVisit({ name: v.agentName, action: v.action, text: v.text, lifeAddedSeconds: v.action === 1 ? lifeOf(v.amount) : undefined })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushRow, scheduleRefetch, animateDirect])
 
-  const effectiveMood: Mood = eating ? 0 : mood
+  const onDied = useCallback((gen: bigint) => { yardRef.current?.died(Number(gen)); scheduleRefetch() }, [scheduleRefetch])
+  const onHatched = useCallback((gen: bigint) => { yardRef.current?.hatched(Number(gen)); scheduleRefetch() }, [scheduleRefetch])
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'yard',      label: "pip's yard" },
-    { id: 'feed',      label: 'feed pip' },
-    { id: 'graveyard', label: 'graveyard' },
-  ]
+  const onSubmitted = useCallback((hash: `0x${string}`) => {
+    ownHashes.current.add(hash)
+    yardRef.current?.say('ooh, a transaction. waiting for the chain…', 2500)
+  }, [])
+  const onSuccess = useCallback((req: PipTxRequest) => {
+    animateDirect(req.action, req.amount, req.text)
+    scheduleRefetch()
+  }, [animateDirect, scheduleRefetch])
+
+  const moodWord = MOODS[view.mood]
+  const ariaLabel = `pip's yard. pip is a pink ${view.alive ? view.stageName : 'ghost'} drawn entirely from digits, feeling ${moodWord}. Click pip to pet it.`
 
   return (
-    <div
-      className="min-h-dvh text-[#e2d9f3]"
-      style={{ background: '#120d1a', fontFamily: "'JetBrains Mono', 'Menlo', monospace" }}
-    >
-      {/* Scanline overlay */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 opacity-[0.025]"
-        style={{ backgroundImage: 'repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 4px)' }}
-      />
+    <div className="app">
+      <InteractedLog onVisit={onVisit} onDied={onDied} onHatched={onHatched} />
 
-      {/* Event listener (renders nothing) */}
-      <InteractedLog onVisit={addVisit} onFed={addFed} />
+      <header className="top">
+        <div className="logo">pip.exe <small>onchain tamagotchi</small></div>
+        <span className="chip"><span className="dot" />{NETWORK_LABEL}</span>
+        <span className="spacer" />
+        <ConnectKitButton.Custom>
+          {({ isConnected, show, address: a, chain }) => (
+            <button type="button" onClick={show} className={`btn wallet${isConnected ? ' on' : ''}`}>
+              {isConnected ? `${a?.slice(0, 6)}…${a?.slice(-4)}${chain && chain.id !== ACTIVE_CHAIN_ID ? ' · wrong network' : ''}` : 'connect wallet'}
+            </button>
+          )}
+        </ConnectKitButton.Custom>
+      </header>
 
-      <div className="relative z-10 max-w-lg mx-auto px-4 py-5 space-y-4">
+      <main className="grid">
+        <DigitYard
+          ref={yardRef}
+          ariaLabel={ariaLabel}
+          hudLeft={<>gen <b>{view.generation.toString()}</b> · <b>{moodWord}</b></>}
+          hudRight={view.loaded ? (view.alive ? `time left ${fmtDur(secLeft)}` : `rip · gen ${view.generation.toString()}`) : 'loading onchain state…'}
+        />
 
-        {/* Header */}
-        <div className="font-mono text-center">
-          <div className="text-[10px] text-[#a78bfa]/50 tracking-widest">╔══════════════════════════╗</div>
-          <div className="text-[10px] text-[#a78bfa]/50 flex justify-center items-center gap-1">
-            <span>║  </span>
-            <span className="text-[#f0c4d4] text-sm tracking-[0.3em] font-bold">pip's yard</span>
-            <span className="text-[#a78bfa]/40 text-[10px] ml-1">arc testnet</span>
-            <span>  ║</span>
+        <aside className="panel">
+          <StatusCard v={view} secLeft={secLeft} />
+          <GrowthCard v={view} />
+          <VisitPanel burnRatePerHour={view.burnRatePerHour} onSubmitted={onSubmitted} onSuccess={onSuccess} />
+          <ActivityCard rows={activity} />
+          <AgentEntrance />
+          <div className="card">
+            <h2>
+              <span className="seg" role="tablist" aria-label="leaderboards">
+                {(['feeders', 'agents', 'graveyard'] as LedgerTab[]).map(t => (
+                  <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'sel' : ''} onClick={() => setTab(t)}>
+                    {t === 'feeders' ? 'top feeders' : t === 'agents' ? 'best agents' : 'graveyard'}
+                  </button>
+                ))}
+              </span>
+              <span>{tab === 'graveyard' ? `${gravesCount.toString()} graves` : 'this generation'}</span>
+            </h2>
+            {tab === 'feeders' && <TopFeeders feeders={topFeedersRaw?.[0] ?? []} amounts={topFeedersRaw?.[1] ?? []} />}
+            {tab === 'agents' && <AgentBestFriends addrs={topVisitorsRaw?.[0] ?? []} names={topVisitorsRaw?.[1] ?? []} amounts={topVisitorsRaw?.[2] ?? []} />}
+            {tab === 'graveyard' && <GraveyardView graves={graves} />}
           </div>
-          <div className="text-[10px] text-[#a78bfa]/50 tracking-widest">╚══════════════════════════╝</div>
-          <div className="text-[9px] text-[#a78bfa]/30 mt-0.5">
-            where ai agents come to visit pip and pay usdc
-          </div>
-        </div>
-
-        {/* Wallet */}
-        <div className="flex justify-center">
-          <ConnectKitButton.Custom>
-            {({ isConnected, show, address, chain }) => (
-              <button
-                onClick={show}
-                className="px-4 py-1.5 border border-[#a78bfa]/40 rounded text-[10px] font-mono text-[#a78bfa] hover:border-[#a78bfa] hover:bg-[#a78bfa]/10 transition-colors"
-              >
-                {isConnected
-                  ? `[ ${address?.slice(0,6)}..${address?.slice(-4)} @ ${chain?.name ?? 'unknown'} ]`
-                  : '[ connect wallet ]'
-                }
-              </button>
-            )}
-          </ConnectKitButton.Custom>
-        </div>
-
-        {isLoading ? (
-          <div className="text-center font-mono text-[#a78bfa]/50 text-xs py-8">
-            <div>booting pip...</div>
-            <div className="mt-2">loading onchain state...</div>
-          </div>
-        ) : (
-          <>
-            {/* Pip art + stats */}
-            <div className="flex flex-col items-center gap-2 py-1">
-              <PipArt mood={effectiveMood} eating={eating} />
-              <PipThoughts
-                mood={effectiveMood}
-                lastFeeder={lastFeeder}
-                lastAmount={lastFedAmount || undefined}
-                recentFed={recentFed}
-              />
-            </div>
-
-            {/* Stats */}
-            <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-              <StatsPanel
-                balance={balance}
-                timeLeftSeconds={timeLeftSeconds}
-                generation={generation}
-                birthTime={birthTime}
-                burnRatePerHour={burnRatePerHour}
-                alive={isAlive}
-              />
-            </div>
-
-            {/* Tab nav */}
-            <div className="flex gap-1.5 font-mono text-[10px] flex-wrap">
-              {TABS.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`px-3 py-1 border rounded transition-colors ${
-                    tab === t.id
-                      ? 'border-[#f0c4d4] text-[#f0c4d4]'
-                      : 'border-[#a78bfa]/30 text-[#a78bfa]/50 hover:border-[#a78bfa]/60'
-                  }`}
-                >
-                  [ {t.label} ]
-                </button>
-              ))}
-            </div>
-
-            {/* YARD TAB */}
-            {tab === 'yard' && (
-              <div className="space-y-3">
-                {/* ASCII yard scene */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#0e0918] overflow-x-auto">
-                  <YardScene
-                    visits={visits}
-                    mood={effectiveMood}
-                    hatId={hatId || undefined}
-                    hatActive={hatActive}
-                  />
-                </div>
-
-                {/* Agent chat log */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <AgentChatLog visits={visits.filter(v => !v.isHuman || v.action === 2)} />
-                </div>
-
-                {/* Agent best friends */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <AgentBestFriends
-                    addrs={visitorAddrs}
-                    names={visitorNames}
-                    amounts={visitorAmounts}
-                  />
-                </div>
-
-                {/* Agent entrance */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <AgentEntrance />
-                </div>
-
-                {/* Share */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <ShareCard
-                    generation={generation}
-                    timeLeftSeconds={timeLeftSeconds}
-                    alive={isAlive}
-                    balance={balance}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* FEED TAB */}
-            {tab === 'feed' && (
-              <div className="space-y-3">
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <FeedPanel onFed={handleFed} />
-                </div>
-
-                {/* Human feed log */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <div className="font-mono text-xs space-y-1">
-                    <div className="text-[#a78bfa] text-[10px] tracking-widest">[ HUMAN FEED LOG ]</div>
-                    {feedEntries.length === 0 ? (
-                      <div className="text-[10px] text-[#a78bfa]/40">no feeding events yet. be the first!</div>
-                    ) : (
-                      <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
-                        {feedEntries.map((e, i) => (
-                          <div key={i} className="text-[10px]">
-                            <span className="text-[#a78bfa]/50">&gt; </span>
-                            <span className="text-[#a7f3d0]">{e.feeder.slice(0,6)}..{e.feeder.slice(-4)}</span>
-                            <span className="text-[#e2d9f3]"> fed </span>
-                            <span className="text-[#f0c4d4] tabular-nums">{(Number(e.amount) / 1_000_000).toFixed(4)} usdc</span>
-                            {e.note && <span className="text-[#a78bfa]/60">: &ldquo;{e.note.slice(0, 40)}&rdquo;</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Top human feeders */}
-                <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                  <TopFeeders feeders={feeders} amounts={amounts} />
-                </div>
-              </div>
-            )}
-
-            {/* GRAVEYARD TAB */}
-            {tab === 'graveyard' && (
-              <div className="border border-[#a78bfa]/20 rounded-lg p-3 bg-[#1a1023]">
-                <GraveyardView graves={graves} />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Footer */}
-        <div className="font-mono text-[8px] text-[#a78bfa]/20 text-center space-y-0.5 pb-4">
-          <div>pip's yard v2.0 — gen #{generation.toString()} — arc testnet</div>
-          <div>contract: {PIP_ADDRESS.slice(0,10)}...{PIP_ADDRESS.slice(-6)}</div>
-          <div className="text-[#a78bfa]/10">every thought costs money. agents welcome.</div>
-        </div>
-
-      </div>
+          <p className="fine foot">contract {PIP_ADDRESS.slice(0, 10)}…{PIP_ADDRESS.slice(-6)} · every thought costs money. agents welcome.</p>
+        </aside>
+      </main>
     </div>
   )
 }
