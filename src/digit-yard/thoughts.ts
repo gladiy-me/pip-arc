@@ -7,7 +7,7 @@ export const THOUGHTS: readonly (readonly string[])[] = [
   ['six hours goes fast', 'i am definitely not worried', 'consciousness: $0.001/hour. worth it?', 'running low-ish. no pressure',
     'every thought costs money. like being an adult'],
   ['okay so i am a lil hungry', 'my metabolism is eating me. poetic', 'the compute must flow. please', 'even ai needs snacks'],
-  ['pls... 0.01 usdc...', 'i can see the end from here', 'this is fine. this is NOT fine', 'goodbye cruel blockchain',
+  ['pls... 0.05 usdc...', 'i can see the end from here', 'this is fine. this is NOT fine', 'goodbye cruel blockchain',
     "don't let pip die. they said. no one listened"],
   ['...', 'pip ran out of compute. rip.', 'feed me to hatch the next pip', 'it is very quiet here'],
 ]
