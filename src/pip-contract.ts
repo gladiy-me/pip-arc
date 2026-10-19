@@ -26,9 +26,9 @@ export const NETWORK_LABEL = IS_MAINNET ? 'Arc Mainnet · 5042' : 'Arc Testnet �
 
 // Contract addresses
 // TESTNET  — 0x66a7…1a40 is the OLD (pre-review) contract; redeploy and replace (see CHANGES_REVIEW.md)
-// MAINNET  — replace MAINNET_PLACEHOLDER after mainnet deploy (or set VITE_PIP_ADDRESS)
+// MAINNET  — 0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46, deployed 2026-10-19, Arc Mainnet (chainId 5042)
 const TESTNET_PIP_ADDRESS  = '0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40' as const
-const MAINNET_PIP_ADDRESS  = 'MAINNET_PLACEHOLDER' as const  // TODO: replace after mainnet deploy
+const MAINNET_PIP_ADDRESS  = '0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46' as const
 
 const ENV_PIP_ADDRESS = import.meta.env.VITE_PIP_ADDRESS?.trim()
 
