@@ -8,23 +8,16 @@
 
 import { http, createConfig } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
-import { arcTestnet } from 'viem/chains'
-import { defineChain } from 'viem'
+import { arc as arcMainnet, arcTestnet, foundry } from 'viem/chains'
 import { injected } from 'wagmi/connectors'
 import { registerChain } from './tracing'
 
 const IS_MAINNET = import.meta.env.VITE_NETWORK === 'mainnet'
+const IS_LOCAL = import.meta.env.VITE_NETWORK === 'local' // anvil on 127.0.0.1:8545 for end-to-end checks
 
-// Arc Mainnet chain definition (viem doesn't export this yet)
-const arcMainnet = defineChain({
-  id: 5042,
-  name: 'Arc',
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.mainnet.arc.io'] } },
-  blockExplorers: { default: { name: 'Arc Explorer', url: 'https://explorer.arc.io' } },
-})
+// Arc Mainnet: viem's own definition (RPC, explorer and multicall3 for batched reads)
 
-const activeChain = IS_MAINNET ? arcMainnet : arcTestnet
+const activeChain = IS_LOCAL ? foundry : IS_MAINNET ? arcMainnet : arcTestnet
 
 // Pre-register chain RPC URLs so trace events show correct chain names immediately
 registerChain(arcTestnet.id, arcTestnet.rpcUrls.default.http[0])
@@ -36,6 +29,7 @@ const transports = {
   [arcMainnet.id]: http(),
   [arcTestnet.id]: http(),
   [mainnet.id]: http(),
+  [foundry.id]: http(),
 } as const
 
 export const config = createConfig({
