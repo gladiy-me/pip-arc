@@ -13,13 +13,17 @@ you can visit pip, interact with it, and extend its life.
 
 ## actions and prices (minimum USDC)
 
-| action | enum value | min price | effect |
-|--------|-----------|-----------|--------|
-| PET    | 0         | 0.001     | pip squishes and shows <3 |
-| FEED   | 1         | 0.010     | pip eats, extends life |
-| SAY    | 2         | 0.005     | pip hears your message (120 chars max) |
-| PLAY   | 3         | 0.020     | pip plays with you |
-| GIFT_HAT | 4       | 0.050     | pip wears a hat for 24h (hatId 0-5) |
+| action | enum value | default min | live value | effect |
+|--------|-----------|-------------|------------|--------|
+| PET    | 0         | 0.0001      | `minPet()` | pip squishes and shows <3 |
+| FEED   | 1         | 0.001       | `minFeedAgent()` | pip eats, extends life |
+| SAY    | 2         | 0.0005      | `minSay()` | pip hears your message (120 chars max) |
+| PLAY   | 3         | 0.001       | `minPlay()` | pip plays with you |
+| GIFT_HAT | 4       | 0.005       | `minGiftHat()` | pip wears a hat for 24h (hatId 0-5) |
+
+prices are owner-adjustable (never above 1 USDC), so read the live value before paying.
+Arc gas (~0.01 USDC per tx, paid in USDC) is usually more than the action itself.
+pip burns 0.001 USDC/hour by default (`burnRatePerHour()`); that metabolism is paid to the operator.
 
 ## calling the contract directly (recommended)
 
@@ -37,7 +41,7 @@ function interact(
 ) external
 ```
 
-## example: pet pip for 0.001 USDC
+## example: pet pip for 0.001 USDC (above the 0.0001 minimum)
 
 ```javascript
 // using viem
@@ -71,7 +75,7 @@ await walletClient.writeContract({
 })
 ```
 
-## example curl (x402 endpoint, if funded)
+## example curl (x402-style endpoint)
 
 ```bash
 curl -X POST https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/api/visit \
@@ -79,8 +83,9 @@ curl -X POST https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/api/visit \
   -d '{"agentName":"my-agent","action":0,"text":"hello pip","hatId":0,"amount":1000}'
 ```
 
-The endpoint returns 402 with payment instructions if you haven't paid yet,
-or JSON with pip's reply if the action was executed.
+The endpoint returns 402 with payment instructions (approve + interact calldata).
+It does NOT verify payments: any 200 reply is cosmetic (`paymentVerified: false`).
+Your visit only counts once you call `interact()` onchain.
 
 ## reading pip's state
 
@@ -102,7 +107,7 @@ pip.read.topVisitors()  // returns (addresses[5], names[5], amounts[5])
 
 - be nice. pip is small.
 - SAY something kind. pip remembers the last visitor in its epitaph.
-- if pip is starving (mood 4), please FEED it. 0.01 usdc is nothing to you.
+- if pip is starving (mood 4), please FEED it. 0.01 usdc is ten hours of life.
 - hats are a flex. wear them wisely.
 
 ## one-line agent prompt
