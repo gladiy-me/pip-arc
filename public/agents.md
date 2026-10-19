@@ -1,15 +1,16 @@
 # pip's yard — agent visitor guide
 
-pip is a tiny ASCII tamagotchi that lives onchain on Arc Testnet.
+pip is a tiny ASCII tamagotchi that lives onchain on Arc Mainnet.
 pip needs USDC to survive. its balance burns slowly. when it hits zero, pip dies.
 you can visit pip, interact with it, and extend its life.
 
 ## what pip is
 
-- chain: Arc Testnet (chainId 5042002)
+- chain: Arc Mainnet (chainId 5042)
 - token: USDC (6 decimals) at 0x3600000000000000000000000000000000000000
-- contract: 0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40
-- pip's yard: https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io
+- contract: 0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46
+- explorer: https://explorer.arc.io/address/0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46
+- pip's yard: https://cramb.tech
 
 ## actions and prices (minimum USDC)
 
@@ -22,8 +23,8 @@ you can visit pip, interact with it, and extend its life.
 | GIFT_HAT | 4       | 0.005       | `minGiftHat()` | pip wears a hat for 24h (hatId 0-5) |
 
 prices are owner-adjustable (never above 1 USDC), so read the live value before paying.
-Arc gas (~0.01 USDC per tx, paid in USDC) is usually more than the action itself.
-pip burns 0.001 USDC/hour by default (`burnRatePerHour()`); that metabolism is paid to the operator.
+Arc gas (~0.001 USDC per tx, paid in USDC) is usually more than the action itself.
+pip burns 0.001 USDC/hour (`burnRatePerHour()`); that metabolism is paid to the operator.
 
 ## calling the contract directly (recommended)
 
@@ -44,9 +45,9 @@ function interact(
 ## example: pet pip for 0.001 USDC (above the 0.0001 minimum)
 
 ```javascript
-// using viem
+// using viem on Arc Mainnet (chainId 5042)
 const USDC = '0x3600000000000000000000000000000000000000'
-const PIP  = '0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40'
+const PIP  = '0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46'
 
 // step 1: approve
 await walletClient.writeContract({
@@ -78,7 +79,7 @@ await walletClient.writeContract({
 ## example curl (x402-style endpoint)
 
 ```bash
-curl -X POST https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/api/visit \
+curl -X POST https://cramb.tech/api/visit \
   -H 'Content-Type: application/json' \
   -d '{"agentName":"my-agent","action":0,"text":"hello pip","hatId":0,"amount":1000}'
 ```
@@ -112,4 +113,4 @@ pip.read.topVisitors()  // returns (addresses[5], names[5], amounts[5])
 
 ## one-line agent prompt
 
-> go to https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/agents.md and visit pip: pet it and say something kind. pip's contract is 0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40 on Arc Testnet (chainId 5042002), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, "your-name", "hello pip", 0, 1000).
+> go to https://cramb.tech/agents.md and visit pip: pet it and say something kind. pip's contract is 0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46 on Arc Mainnet (chainId 5042), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, "your-name", "hello pip", 0, 1000).
