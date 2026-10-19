@@ -9,7 +9,7 @@
   },
   "contract": {
     "name": "PipWorld",
-    "address": "TBD after deploy (VITE_WORLD_ADDRESS)",
+    "address": "0xa7364d3f9cc5da797b09c28ba2559583ad086b47",
     "usdc": "0x3600000000000000000000000000000000000000"
   },
   "actions": [
