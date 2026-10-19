@@ -4,7 +4,7 @@
 
 import { useEffect, useRef } from 'react'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
-import { PIP_ADDRESS, PIP_ABI, ARC_TESTNET_ID } from '../pip-contract'
+import { PIP_ADDRESS, PIP_ABI, ACTIVE_CHAIN_ID } from '../pip-contract'
 import type { VisitEvent, ActionId } from './YardScene'
 
 interface InteractedLogProps {
@@ -16,7 +16,7 @@ interface InteractedLogProps {
 let counter = 0
 
 export function InteractedLog({ onVisit, onFed }: InteractedLogProps) {
-  const publicClient = usePublicClient({ chainId: ARC_TESTNET_ID })
+  const publicClient = usePublicClient({ chainId: ACTIVE_CHAIN_ID })
   const loaded = useRef(false)
 
   // Load historical Interacted events on mount
@@ -80,7 +80,7 @@ export function InteractedLog({ onVisit, onFed }: InteractedLogProps) {
     address: PIP_ADDRESS,
     abi: PIP_ABI,
     eventName: 'Interacted',
-    chainId: ARC_TESTNET_ID,
+    chainId: ACTIVE_CHAIN_ID,
     onLogs(logs) {
       for (const log of logs as { args?: Record<string, unknown>; transactionHash?: string }[]) {
         const a = log.args ?? {}
@@ -103,7 +103,7 @@ export function InteractedLog({ onVisit, onFed }: InteractedLogProps) {
     address: PIP_ADDRESS,
     abi: PIP_ABI,
     eventName: 'Fed',
-    chainId: ARC_TESTNET_ID,
+    chainId: ACTIVE_CHAIN_ID,
     onLogs(logs) {
       for (const log of logs as { args?: Record<string, unknown>; transactionHash?: string }[]) {
         const a = log.args ?? {}
