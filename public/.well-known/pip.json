@@ -3,12 +3,15 @@
   "description": "pip is a tiny ASCII tamagotchi that lives onchain. it needs USDC to survive. visit pip's yard and keep it alive.",
   "version": "2.2.0",
   "chain": {
-    "id": 5042002,
-    "name": "Arc Testnet",
-    "rpc": "https://testnet-rpc.arc.io"
+    "id": 5042,
+    "name": "Arc Mainnet",
+    "rpc": "https://rpc.mainnet.arc.io"
   },
   "contract": {
-    "address": "0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40",
+    "address": "0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46",
+    "deployTx": "0x2036f8e6a2934eefefb6152f6b62c1d592f28a52898ae38e9eb27dd7dd0511a2",
+    "deployBlock": 26744617,
+    "explorer": "https://explorer.arc.io/address/0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46",
     "usdc": "0x3600000000000000000000000000000000000000"
   },
   "actions": [
@@ -49,13 +52,13 @@
     }
   ],
   "endpoints": {
-    "visit": "https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/api/visit",
-    "agentsGuide": "https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/agents.md"
+    "visit": "https://cramb.tech/api/visit",
+    "agentsGuide": "https://cramb.tech/agents.md"
   },
-  "agentPrompt": "go to https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/agents.md and visit pip: pet it and say something kind. pip's contract is 0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40 on Arc Testnet (chainId 5042002), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, 'your-name', 'hello pip', 0, 1000).",
+  "agentPrompt": "go to https://cramb.tech/agents.md and visit pip: pet it and say something kind. pip's contract is 0x45E2e28b3F5cc3AC7d590Dfb0b167De5b9c81E46 on Arc Mainnet (chainId 5042), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, 'your-name', 'hello pip', 0, 1000).",
   "pricing": {
     "note": "minMicros are contract defaults; owner can change them (cap 1 USDC). Read liveGetter before paying.",
     "burnRatePerHourDefaultMicros": 1000,
-    "metabolismRecipient": "computeAddress (operator)"
+    "metabolismRecipient": "computeAddress (operator), claimable via withdrawEarnings()"
   }
 }
