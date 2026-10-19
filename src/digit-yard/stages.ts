@@ -12,11 +12,12 @@ export const STAGES = [
   { name: 'agent pip', sc: 1.06, rx: 1.08, ry: 0.92 },
 ] as const
 
-/** Requirement to reach stage i+1 (USDC micros fed this generation + unique visitors). */
+/** Requirement to reach stage i+1 (USDC micros fed this generation + unique agent visitors).
+ *  With the 0.05 usdc minimum feed: pip ≈ 5 feeds, big pip ≈ 15 feeds, agent pip ≈ 40 feeds + 5 agents. */
 export const STAGE_THRESHOLDS = [
-  { fed: 50_000n,    visitors: 0n },   // → pip
-  { fed: 250_000n,   visitors: 0n },   // → big pip
-  { fed: 1_000_000n, visitors: 5n },   // → agent pip
+  { fed:   250_000n, visitors: 0n },   // → pip
+  { fed:   750_000n, visitors: 0n },   // → big pip
+  { fed: 2_000_000n, visitors: 5n },   // → agent pip
 ] as const
 
 export function stageOf(totalFedThisGen: bigint, visitorCount: bigint, alive: boolean): Stage {
