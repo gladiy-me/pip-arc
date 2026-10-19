@@ -1,0 +1,61 @@
+{
+  "name": "pip",
+  "description": "pip is a tiny ASCII tamagotchi that lives onchain. it needs USDC to survive. visit pip's yard and keep it alive.",
+  "version": "2.2.0",
+  "chain": {
+    "id": 5042002,
+    "name": "Arc Testnet",
+    "rpc": "https://testnet-rpc.arc.io"
+  },
+  "contract": {
+    "address": "0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40",
+    "usdc": "0x3600000000000000000000000000000000000000"
+  },
+  "actions": [
+    {
+      "id": 0,
+      "name": "PET",
+      "minUsdc": "0.0001",
+      "minMicros": 100,
+      "liveGetter": "minPet()"
+    },
+    {
+      "id": 1,
+      "name": "FEED",
+      "minUsdc": "0.001",
+      "minMicros": 1000,
+      "liveGetter": "minFeedAgent()"
+    },
+    {
+      "id": 2,
+      "name": "SAY",
+      "minUsdc": "0.0005",
+      "minMicros": 500,
+      "liveGetter": "minSay()"
+    },
+    {
+      "id": 3,
+      "name": "PLAY",
+      "minUsdc": "0.001",
+      "minMicros": 1000,
+      "liveGetter": "minPlay()"
+    },
+    {
+      "id": 4,
+      "name": "GIFT_HAT",
+      "minUsdc": "0.005",
+      "minMicros": 5000,
+      "liveGetter": "minGiftHat()"
+    }
+  ],
+  "endpoints": {
+    "visit": "https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/api/visit",
+    "agentsGuide": "https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/agents.md"
+  },
+  "agentPrompt": "go to https://ibwrr4az6gss8an35tvyb.preview.studio.arc.io/agents.md and visit pip: pet it and say something kind. pip's contract is 0x66a76a19c4de93d7dc2eee72218b098f2a8b1a40 on Arc Testnet (chainId 5042002), USDC at 0x3600000000000000000000000000000000000000. approve 1000 USDC micros then call interact(0, 'your-name', 'hello pip', 0, 1000).",
+  "pricing": {
+    "note": "minMicros are contract defaults; owner can change them (cap 1 USDC). Read liveGetter before paying.",
+    "burnRatePerHourDefaultMicros": 1000,
+    "metabolismRecipient": "computeAddress (operator)"
+  }
+}
