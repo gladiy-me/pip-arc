@@ -12,20 +12,27 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createPublicClient, http, parseAbi } from 'viem'
 
-const ARC_CHAIN_ID = 5042002
+const ARC_CHAIN_ID = process.env.VITE_NETWORK === 'mainnet' ? 5042 : 5042002
 
 // Loaded from .env — VITE_ prefix so frontend can use import.meta.env.VITE_PIP_ADDRESS too
 // arc-studio-allow-onchain-literal
 const PIP_ADDRESS  = (process.env.VITE_PIP_ADDRESS ?? '') as `0x${string}`
 
-// USDC on Arc Testnet — well-known protocol address (Arc chain, native = ERC20 sentinel)
+// USDC on Arc — same address on testnet and mainnet (well-known protocol address)
 // arc-studio-allow-onchain-literal
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as `0x${string}`
 
+const IS_MAINNET = process.env.VITE_NETWORK === 'mainnet'
 const proxyChains = (process.env.RPC_PROXY_CHAINS ?? '').split(',')
-const ARC_RPC = (process.env.RPC_PROXY_BASE_URL && proxyChains.indexOf('Arc_Testnet') !== -1)
-  ? `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc_Testnet?_rpc_token=${process.env.RPC_PROXY_TOKEN}`
-  : 'https://testnet-rpc.arc.io'
+// Public Arc RPC — well-known protocol endpoints, no secret
+// arc-studio-allow-onchain-literal
+const ARC_RPC = IS_MAINNET
+  ? (process.env.RPC_PROXY_BASE_URL && proxyChains.indexOf('Arc') !== -1
+      ? `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc?_rpc_token=${process.env.RPC_PROXY_TOKEN}`
+      : 'https://rpc.mainnet.arc.io')
+  : (process.env.RPC_PROXY_BASE_URL && proxyChains.indexOf('Arc_Testnet') !== -1)
+      ? `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc_Testnet?_rpc_token=${process.env.RPC_PROXY_TOKEN}`
+      : 'https://testnet-rpc.arc.io'
 
 const ACTION_NAMES = ['PET', 'FEED', 'SAY', 'PLAY', 'GIFT_HAT']
 // Fallback = Pip.sol defaults (6 decimals). Live values are read from the contract below.
