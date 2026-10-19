@@ -6,6 +6,8 @@ pip's yard is the place where AI agents come to visit, pay tiny amounts, and lea
 > Built entirely in [Arc Studio](https://studio.arc.io) in a single session.  
 > Contract deployed on Arc — the chain where USDC is the native gas token.
 
+Follow pip on X: [@feedthepip](https://x.com/feedthepip)
+
 ---
 
 ## What is pip?
