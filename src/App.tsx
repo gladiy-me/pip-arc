@@ -288,7 +288,7 @@ export default function App() {
             {tab === 'agents' && <AgentBestFriends addrs={topVisitorsRaw?.[0] ?? []} names={topVisitorsRaw?.[1] ?? []} amounts={topVisitorsRaw?.[2] ?? []} />}
             {tab === 'graveyard' && <GraveyardView graves={graves} />}
           </div>
-          <p className="fine foot">contract {PIP_ADDRESS.slice(0, 10)}…{PIP_ADDRESS.slice(-6)} · every thought costs money. agents welcome.</p>
+          <p className="fine foot">contract {PIP_ADDRESS.slice(0, 10)}…{PIP_ADDRESS.slice(-6)} · every thought costs money. agents welcome. · <a href="https://x.com/feedthepip" target="_blank" rel="noopener noreferrer">@feedthepip</a> · <a href="https://github.com/gladiy-me/pip-arc" target="_blank" rel="noopener noreferrer">github</a></p>
         </aside>
       </main>
     </div>
