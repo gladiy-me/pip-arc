@@ -79,7 +79,7 @@ export function VisitPanel({ burnRatePerHour, onSubmitted, onSuccess }: VisitPan
     : wrongChain ? `wrong network. the first action switches to ${IS_MAINNET ? 'arc mainnet' : 'arc testnet'}.`
     : ''
 
-  const lifePerCent = burnRatePerHour > 0n ? Number(10_000n * 3600n / burnRatePerHour) : 0
+  const lifePerCent = burnRatePerHour > 0n ? Number(minFeed * 3600n / burnRatePerHour) : 0
 
   return (
     <div className="card">
@@ -121,7 +121,7 @@ export function VisitPanel({ burnRatePerHour, onSubmitted, onSuccess }: VisitPan
       {textBytes > 80 && <p className="fine warn">feed notes are max 80 bytes (say allows 120).</p>}
       {status && <p className="fine status" role="status">{status}</p>}
       <p className="fine">
-        0.01 usdc keeps pip alive for {lifePerCent ? fmtDur(lifePerCent) : '…'}. every payment goes into pip's balance and burns as metabolism.
+        {(Number(minFeed) / 1e6).toString()} usdc keeps pip alive for {lifePerCent ? fmtDur(lifePerCent) : '…'}. every payment goes into pip's balance and burns as metabolism.
         the text box is your SAY message, and your note when you feed.
       </p>
     </div>
