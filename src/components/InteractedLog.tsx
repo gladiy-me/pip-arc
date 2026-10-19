@@ -1,25 +1,66 @@
 /**
- * Live event listener for Interacted events — feeds the visit queue
+ * Event listener (renders nothing): backfills Interacted / Fed history (ts: 0, never animated)
+ * and watches live Interacted, Fed, Died, Hatched events.
  */
 
 import { useEffect, useRef } from 'react'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
 import { PIP_ADDRESS, PIP_ABI, ACTIVE_CHAIN_ID } from '../pip-contract'
-import type { VisitEvent, ActionId } from './YardScene'
+import type { VisitEvent, ActionId } from '../visit-types'
 
 interface InteractedLogProps {
   onVisit: (v: VisitEvent) => void
   /** called when a Fed event happens so the existing FeedLog can handle it too */
   onFed?: (feeder: string, amount: bigint, note: string, txHash?: string) => void
+  /** live only */
+  onDied?: (gen: bigint) => void
+  /** live only */
+  onHatched?: (gen: bigint) => void
 }
+
+type RawLog = { args?: Record<string, unknown>; transactionHash?: string | null }
 
 let counter = 0
 
-export function InteractedLog({ onVisit, onFed }: InteractedLogProps) {
+function interactedToVisit(log: RawLog, live: boolean): VisitEvent {
+  const a = log.args ?? {}
+  return {
+    id: `${live ? 'live' : 'hist'}-${counter++}`,
+    agentName: (a['agentName'] as string | undefined) ?? '?',
+    action: (Number(a['action'] ?? 0) as ActionId),
+    text: (a['text'] as string | undefined) ?? '',
+    hatId: Number(a['hatId'] ?? 0),
+    amount: (a['amount'] as bigint | undefined) ?? 0n,
+    txHash: log.transactionHash ?? undefined,
+    ts: live ? Date.now() : 0,
+    wallet: a['visitor'] as string | undefined,
+    gen: a['gen'] as bigint | undefined,
+    timeLeft: a['timeLeft'] as bigint | undefined,
+  }
+}
+
+function fedToVisit(log: RawLog, live: boolean): VisitEvent {
+  const a = log.args ?? {}
+  return {
+    id: `fed-${live ? 'live' : 'hist'}-${counter++}`,
+    agentName: (a['feeder'] as string | undefined) ?? '0x',
+    action: 1,
+    text: (a['note'] as string | undefined) ?? '',
+    amount: (a['amount'] as bigint | undefined) ?? 0n,
+    txHash: log.transactionHash ?? undefined,
+    ts: live ? Date.now() : 0,
+    isHuman: true,
+    wallet: a['feeder'] as string | undefined,
+    gen: a['gen'] as bigint | undefined,
+    timeLeft: a['timeLeftSeconds'] as bigint | undefined,
+  }
+}
+
+export function InteractedLog({ onVisit, onFed, onDied, onHatched }: InteractedLogProps) {
   const publicClient = usePublicClient({ chainId: ACTIVE_CHAIN_ID })
   const loaded = useRef(false)
 
-  // Load historical Interacted events on mount
+  // Load historical Interacted + Fed events on mount (ts: 0 → never animated)
   useEffect(() => {
     if (!publicClient || loaded.current) return
     loaded.current = true
@@ -30,98 +71,64 @@ export function InteractedLog({ onVisit, onFed }: InteractedLogProps) {
       eventName: 'Interacted',
       fromBlock: 'earliest',
     }).then(events => {
-      for (const ev of events as { args?: Record<string, unknown>; transactionHash?: string }[]) {
-        const a = ev.args ?? {}
-        onVisit({
-          id: `hist-${counter++}`,
-          agentName: (a['agentName'] as string | undefined) ?? '?',
-          action: (Number(a['action'] ?? 0) as ActionId),
-          text: (a['text'] as string | undefined) ?? '',
-          hatId: Number(a['hatId'] ?? 0),
-          amount: (a['amount'] as bigint | undefined) ?? 0n,
-          txHash: ev.transactionHash ?? undefined,
-          ts: 0,
-        })
-      }
+      for (const ev of events as RawLog[]) onVisit(interactedToVisit(ev, false))
     }).catch(() => {/* ignore */})
 
-    // Also load historical Fed events (human feeds)
     void publicClient.getContractEvents({
       address: PIP_ADDRESS,
       abi: PIP_ABI,
       eventName: 'Fed',
       fromBlock: 'earliest',
     }).then(events => {
-      for (const ev of events as { args?: Record<string, unknown>; transactionHash?: string }[]) {
-        const a = ev.args ?? {}
-        onFed?.(
-          (a['feeder'] as string | undefined) ?? '0x',
-          (a['amount'] as bigint | undefined) ?? 0n,
-          (a['note'] as string | undefined) ?? '',
-          ev.transactionHash ?? undefined,
-        )
-        // Also emit as a visit so it appears in the yard
-        onVisit({
-          id: `fed-hist-${counter++}`,
-          agentName: (a['feeder'] as string | undefined) ?? '0x',
-          action: 1,
-          text: (a['note'] as string | undefined) ?? '',
-          amount: (a['amount'] as bigint | undefined) ?? 0n,
-          txHash: ev.transactionHash ?? undefined,
-          ts: 0,
-          isHuman: true,
-        })
+      for (const ev of events as RawLog[]) {
+        const v = fedToVisit(ev, false)
+        onFed?.(v.agentName, v.amount, v.text, v.txHash)
+        onVisit(v)
       }
     }).catch(() => {/* ignore */})
   }, [publicClient, onVisit, onFed])
 
-  // Watch live Interacted events
   useWatchContractEvent({
     address: PIP_ADDRESS,
     abi: PIP_ABI,
     eventName: 'Interacted',
     chainId: ACTIVE_CHAIN_ID,
     onLogs(logs) {
-      for (const log of logs as { args?: Record<string, unknown>; transactionHash?: string }[]) {
-        const a = log.args ?? {}
-        onVisit({
-          id: `live-${counter++}`,
-          agentName: (a['agentName'] as string | undefined) ?? '?',
-          action: (Number(a['action'] ?? 0) as ActionId),
-          text: (a['text'] as string | undefined) ?? '',
-          hatId: Number(a['hatId'] ?? 0),
-          amount: (a['amount'] as bigint | undefined) ?? 0n,
-          txHash: log.transactionHash ?? undefined,
-          ts: Date.now(),
-        })
-      }
+      for (const log of logs as RawLog[]) onVisit(interactedToVisit(log, true))
     },
   })
 
-  // Watch live Fed events
   useWatchContractEvent({
     address: PIP_ADDRESS,
     abi: PIP_ABI,
     eventName: 'Fed',
     chainId: ACTIVE_CHAIN_ID,
     onLogs(logs) {
-      for (const log of logs as { args?: Record<string, unknown>; transactionHash?: string }[]) {
-        const a = log.args ?? {}
-        const feeder = (a['feeder'] as string | undefined) ?? '0x'
-        const amount = (a['amount'] as bigint | undefined) ?? 0n
-        const note   = (a['note'] as string | undefined) ?? ''
-        onFed?.(feeder, amount, note, log.transactionHash ?? undefined)
-        onVisit({
-          id: `fed-live-${counter++}`,
-          agentName: feeder,
-          action: 1,
-          text: note,
-          amount,
-          txHash: log.transactionHash ?? undefined,
-          ts: Date.now(),
-          isHuman: true,
-        })
+      for (const log of logs as RawLog[]) {
+        const v = fedToVisit(log, true)
+        onFed?.(v.agentName, v.amount, v.text, v.txHash)
+        onVisit(v)
       }
+    },
+  })
+
+  useWatchContractEvent({
+    address: PIP_ADDRESS,
+    abi: PIP_ABI,
+    eventName: 'Died',
+    chainId: ACTIVE_CHAIN_ID,
+    onLogs(logs) {
+      for (const log of logs as RawLog[]) onDied?.((log.args?.['gen'] as bigint | undefined) ?? 0n)
+    },
+  })
+
+  useWatchContractEvent({
+    address: PIP_ADDRESS,
+    abi: PIP_ABI,
+    eventName: 'Hatched',
+    chainId: ACTIVE_CHAIN_ID,
+    onLogs(logs) {
+      for (const log of logs as RawLog[]) onHatched?.((log.args?.['gen'] as bigint | undefined) ?? 0n)
     },
   })
 
