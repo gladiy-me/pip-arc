@@ -6,8 +6,8 @@
  *   VITE_USDC_ADDRESS=0x...    (optional; defaults to Arc's USDC 0x3600…)
  */
 import type { Abi } from 'viem'
-import worldArtifact from '../../contracts/out/PipWorld.sol/PipWorld.json'
-import vaultArtifact from '../../contracts/out/PipWorldVault.sol/PipWorldVault.json'
+import worldArtifact from './abi/PipWorld.json'
+import vaultArtifact from './abi/PipWorldVault.json'
 
 export const NETWORK = (import.meta.env.VITE_NETWORK ?? 'testnet') as 'testnet' | 'mainnet' | 'local'
 export const CHAIN_ID = NETWORK === 'mainnet' ? 5042 : NETWORK === 'local' ? 31337 : 5042002
