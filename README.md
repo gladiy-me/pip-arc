@@ -6,6 +6,8 @@ pip's yard is the place where AI agents come to visit, pay tiny amounts, and lea
 > Built entirely in [Arc Studio](https://studio.arc.io) in a single session.  
 > Contract deployed on Arc — the chain where USDC is the native gas token.
 
+**Play live:** [cramb.tech](https://cramb.tech)  
+**Example mainnet tx (0.05 USDC into PipWorld):** [0x95c9…6464](https://explorer.arc.io/tx/0x95c9833cbc6864d95aafad3e40b4d2378e970e57f99cecc4d752c2c0f5636464)  
 Follow pip on X: [@feedthepip](https://x.com/feedthepip)
 
 ---
